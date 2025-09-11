@@ -1,176 +1,212 @@
 pico-8 cartridge // http://www.pico-8.com
 version 42
 __lua__
--- game objects --
-player = {
-x = 1,
-y = 63,
-w = 2,
-h = 8,
-sprite = 1
+-- ========================================
+-- simple pico-8 pong game
+-- ========================================
+
+-- game constants
+local screen_width = 128
+local screen_height = 128
+local screen_center = 64
+local paddle_start_y = 56
+
+-- player paddle (left side)
+local player_paddle = {
+    x = 4,
+    y = paddle_start_y,
+    width = 4,
+    height = 16,
+    speed = 2,
+    side = 0  -- 0 = left side
 }
 
-ball = {
-x = 63,
-y = 63,
-w = 6,
-h = 6,
-sprite = 2,
-dir = 180,
-speed = 1,
-dx = 0,
-dy = 0
+-- cpu paddle (right side)  
+local cpu_paddle = {
+    x = 120,
+    y = paddle_start_y,
+    width = 4,
+    height = 16,
+    speed = 1.5,
+    side = 1  -- 1 = right side
 }
+
+-- game ball
+local ball = {
+    x = screen_center,
+    y = screen_center,
+    width = 4,
+    height = 4,
+    velocity_x = 0,
+    velocity_y = 0,
+    speed = 1
+}
+
+-- ========================================
+-- main game functions
+-- ========================================
 
 function _init()
-local dir = rnd_sign()*rnd(45)
-ball.dir += dir
+    reset_ball_position("random")
 end
-
 
 function _update()
-	col = screen_collision(ball)
-	if col.col then
-		change_ball_dir(ball,col.plane)
-	end
-
-	p_col=player_collision(
- 	player,ball) 
- 	
- if p_col.col then
- 		change_ball_dir(ball,p_col.plane)
- end
-  	
- move_player(player)
- move_ball(ball)
-  
+    -- handle ball collisions with screen edges
+    handle_ball_screen_collision()
+    
+    -- handle ball collisions with paddles
+    handle_ball_paddle_collision(ball, player_paddle)
+    handle_ball_paddle_collision(ball, cpu_paddle)
+    
+    -- handle player input
+    update_player_paddle()
+    
+    -- update cpu ai
+    update_cpu_paddle()
+    
+    -- move the ball
+    ball.x = ball.x + ball.velocity_x
+    ball.y = ball.y + ball.velocity_y
 end
-
 
 function _draw()
-	cls()
- spr(player.sprite,
- 				player.x,
- 				player.y
- 			 )
- spr(ball.sprite,
- 				ball.x,
- 				ball.y
- 			 )
- 
+    -- clear screen
+    cls()
+    
+    -- draw paddles
+    draw_paddle(player_paddle)
+    draw_paddle(cpu_paddle)
+    
+    -- draw ball
+    rectfill(ball.x, ball.y, ball.x + ball.width - 1, ball.y + ball.height - 1, 10)
+    
+    -- draw center line
+    draw_center_line()
 end
+
+
 -->8
--- movement --
+-- ========================================
+-- paddle functions
+-- ========================================
 
-function move_player(p)
-	local c = screen_collision(p)
-	if btn(⬆️) and c.plane ~= "up"
-		then 
-	 	p.y -= 1
-	end
-	if btn(⬇️) and c.plane ~= "down"
-		then
-			p.y += 1
-	end
+function update_player_paddle()
+    -- move paddle up
+    if btn(⬆️) then 
+        player_paddle.y = max(0, player_paddle.y - player_paddle.speed)
+    end
+    
+    -- move paddle down
+    if btn(⬇️) then 
+        player_paddle.y = min(screen_height - player_paddle.height, player_paddle.y + player_paddle.speed)
+    end
 end
 
-function set_ball_velocity(b)
-	local t = deg2turn(b.dir)
-	b.dx = cos(t) * b.speed
- b.dy = sin(t) * b.speed
+function update_cpu_paddle()
+    -- simple ai: follow the ball
+    local ball_center_y = ball.y + ball.height / 2
+    local paddle_center_y = cpu_paddle.y + cpu_paddle.height / 2
+    local difference = ball_center_y - paddle_center_y
+    
+    -- only move if difference is significant (prevents jittering)
+    if abs(difference) > 3 then
+        local new_y = cpu_paddle.y + sgn(difference) * cpu_paddle.speed
+        cpu_paddle.y = mid(0, new_y, screen_height - cpu_paddle.height)
+    end
 end
 
-function move_ball(b)
-	set_ball_velocity(b)
-	b.x += b.dx
-	b.y += b.dy
+function draw_paddle(paddle)
+    rectfill(paddle.x, paddle.y, paddle.x + paddle.width - 1, paddle.y + paddle.height - 1, 7)
 end
 
-function change_ball_dir(b, axis)
-  b.dir = reflect_dir(b.dir, axis)
-  set_ball_velocity(b)
+-- ========================================
+-- ball functions
+-- ========================================
+
+function reset_ball_position(direction)
+    -- reset ball to center
+    ball.x = screen_center
+    ball.y = screen_center
+    ball.speed = 1
+    
+    -- set ball direction
+    local angle
+    if direction == "left" then
+        -- ball goes toward left player
+        angle = rnd(60) + 210
+    elseif direction == "right" then
+        -- ball goes toward right player
+        angle = rnd(60) + 30
+    else
+        -- random direction
+        angle = rnd() > 0.5 and rnd(60) + 30 or rnd(60) + 210
+    end
+    
+    -- convert angle to velocity components
+    local t = angle / 360
+    ball.velocity_x = cos(t) * ball.speed
+    ball.velocity_y = sin(t) * ball.speed
 end
 
-function reflect_dir(old_dir, axis)
-  if axis == "left"
-  or axis == "right"
-  then
-    return (180 - old_dir) % 360
-  elseif axis == "up"
-  or axis == "down"
-  then
-    return (-old_dir) % 360
-  end
+function handle_ball_screen_collision()
+    -- ball hit left or right edge - reset to center
+    if ball.x <= 0 then
+        reset_ball_position("right")
+    elseif ball.x >= screen_width - ball.width then
+        reset_ball_position("left")
+    end
+    
+    -- ball hit top or bottom edge - bounce
+    if ball.y <= 0 or ball.y >= screen_height - ball.height then
+        ball.velocity_y = -ball.velocity_y
+    end
 end
 
--- collision --
-
-function player_collision(
-										p,r2
-									 )
-	if p.x < r2.x+r2.w
-	and p.x + p.w + 1 > r2.x
-	and p.y < r2.y + r2.h
-	and p.y + p.h	> r2.y 
-	then
-		return ({plane="left", col=true})
-	else
-		return ({plane="", col=false})
-	end
+function handle_ball_paddle_collision(ball, paddle)
+    -- check if ball and paddle are colliding
+    if not objects_colliding(ball, paddle) then 
+        return 
+    end
+    
+    -- check if ball is moving toward the paddle
+    local moving_toward_paddle = (paddle.side == 0 and ball.velocity_x < 0) or 
+                                (paddle.side == 1 and ball.velocity_x > 0)
+    if not moving_toward_paddle then 
+        return 
+    end
+    
+    -- bounce ball and adjust position to prevent sticking
+    if paddle.side == 0 then
+        -- left paddle
+        ball.velocity_x = abs(ball.velocity_x)
+        ball.x = paddle.x + paddle.width
+    else
+        -- right paddle  
+        ball.velocity_x = -abs(ball.velocity_x)
+        ball.x = paddle.x - ball.width
+    end
+    
+    -- increase ball speed slightly on each hit (max speed of 3)
+    ball.speed = min(ball.speed + 0.1, 3)
 end
 
-function screen_collision(obj)
-	if obj.x+obj.w >= 127
-		then
-			return ({
-				plane = "right",
-				col = true
-			})
-	end
-	if obj.x <= 0
-		then
-			return ({
-				plane = "left",
-				col = true
-			})
-	end
-	if obj.y + obj.h >= 127
-		then
-			return ({
-				plane = "down",
-				col = true
-			})
-	end
-	if obj.y <= 0
-		then
-			return ({
-				plane = "up",
-				col = true
-			})
-	end
-	
-	return ({
-				plane = "",
-				col = false
-			})
-end
--->8
+-- ========================================
+-- utility functions
+-- ========================================
 
--- math --
-
-function deg2turn(deg)
-  return (deg % 360) / 360
+function objects_colliding(obj1, obj2)
+    return obj1.x < obj2.x + obj2.width and 
+           obj1.x + obj1.width > obj2.x and
+           obj1.y < obj2.y + obj2.height and 
+           obj1.y + obj1.height > obj2.y
 end
 
-function rnd_sign()
-	local n = rnd(1)
-	if n > 0.5 then
-		return 1
-	else
-		return -1
-	end
+function draw_center_line()
+    -- draw dotted center line
+    for i = 0, screen_height, 8 do 
+        pset(screen_center, i, 6) 
+    end
 end
-	
 __gfx__
 00000000000770000000000077777777000000070000000770000000700000000000000077777777777777777777777700000000000000000000000000000000
 00000000000770000077770077777777000000070000000770000000700000000000000000000000000000077000000000000000000000000000000000000000
