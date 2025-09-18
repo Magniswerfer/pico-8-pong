@@ -11,25 +11,33 @@ local screen_height = 127
 local screen_center = 63
 local paddle_start_y = 55
 
+local win_condition = 1
+local game_over = false
+local winner_p
+
 -- player paddle (left side)
 local player_paddle = {
+    name = "player",
     x = 4,
     y = paddle_start_y,
     width = 4,
     height = 16,
     speed = 2,
-    side = 0 -- 0 = left side
+    side = 0, -- 0 = left side
+    score = 0
 }
 
 -- cpu paddle (right side)
 local cpu_paddle = {
+    name = "cpu",
     x = 120,
     y = paddle_start_y,
     width = 4,
     height = 16,
     speed = 1.5,
     side = 1, -- 1 = right side
-    difficulty = 4 -- bigger is easier
+    difficulty = 4, -- bigger is easier
+    score = 0
 }
 
 -- game ball
@@ -49,9 +57,18 @@ local ball = {
 
 function _init()
     reset_ball_position("random")
+    reset_scores()
 end
 
 function _update()
+    if game_over then
+        if btn(❎) then
+            reset_winner()
+            reset_ball_position("random")
+            reset_scores()
+        end
+        return
+    end
     -- handle ball collisions with screen edges
     handle_ball_screen_collision()
 
@@ -68,9 +85,20 @@ function _update()
     -- move the ball
     ball.x = ball.x + cos(ball.direction) * ball.speed
     ball.y = ball.y + sin(ball.direction) * ball.speed
+
+    if player_paddle.score >= win_condition then
+        winner(player_paddle)
+    elseif cpu_paddle.score >= win_condition then
+        winner(cpu_paddle)
+    end
 end
 
 function _draw()
+    if game_over then
+        draw_gameover_screen()
+        return
+    end
+
     -- clear screen
     cls()
 
@@ -84,6 +112,8 @@ function _draw()
     -- draw center line
     draw_center_line()
     draw_border()
+
+    print_score()
 end
 
 -->8
@@ -118,6 +148,15 @@ end
 
 function draw_paddle(paddle)
     rectfill(paddle.x, paddle.y, paddle.x + paddle.width - 1, paddle.y + paddle.height - 1, 7)
+end
+
+function increase_score(paddle)
+    paddle.score = paddle.score + 1
+end
+
+function reset_scores()
+    player_paddle.score = 0
+    cpu_paddle.score = 0
 end
 
 -- ========================================
@@ -156,8 +195,10 @@ function handle_ball_screen_collision()
     -- ball hit left or right edge - reset to center
     if ball.x <= 0 then
         reset_ball_position("right")
+        increase_score(cpu_paddle)
     elseif ball.x >= screen_width - ball.width then
         reset_ball_position("left")
+        increase_score(player_paddle)
     end
 
     -- ball hit top or bottom edge - bounce
@@ -197,13 +238,23 @@ function handle_ball_paddle_collision(ball, paddle)
     local moving_up = sin(ball.direction) < 0
 
     -- change direction off ball depending on where it hit the paddle
-    if ball.y < paddle.y + paddle.height / 3 then
+    if ball.y < paddle.y + paddle.height / 5 then
         -- if in lower third and moving down, change directions again
         if not moving_up then
             ball.direction = -ball.direction
         end
     end
-    if ball.y > paddle.y + 2 * (paddle.height / 3) then
+
+    if ball.y > paddle.y + paddle.height / 5 and ball.y < paddle.y + 4 * (paddle.height / 5) then
+        -- the closer to the middle the less off a change in direction
+        local paddle_middle = paddle.y + paddle.height / 2
+        local difference = ball.y - paddle_middle
+
+        local offset = difference * 0.1
+        ball.direction = ball.direction + offset
+    end
+
+    if ball.y > paddle.y + 4 * (paddle.height / 5) then
         -- if in higher third
         if moving_up then
             ball.direction = -ball.direction
@@ -241,6 +292,27 @@ function draw_border()
     end
 end
 
+function print_score()
+    -- print scores
+    print("PLAYER: " .. player_paddle.score .. ", CPU: " .. cpu_paddle.score, 2, 2, 2)
+end
+
+function winner(paddle)
+    game_over = true
+    winner_p = paddle.name
+end
+
+function reset_winner()
+    game_over = false
+    winner_p = nil
+end
+
+function draw_gameover_screen()
+    rectfill(20, 20, 107, 107, 7)
+    rect(20, 20, 107, 107, 2)
+    print(winner_p .. " won!", 22, 22, 2)
+    print("press ❎ to restart", 22, 30, 2)
+end
 --)
 
 __gfx__
